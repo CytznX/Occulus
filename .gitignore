@@ -39,3 +39,6 @@ Thumbs.db
 #Added By X#
 ############
 *.pyc
+res/*
+img/*
+vid/*
