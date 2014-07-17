@@ -5,11 +5,12 @@ Created By: Citizenx
 """
 
 #Some 
-import time
+import time, datetime
 import os
 import numpy as np
-import cv2
-import cv
+import cv2, cv
+
+import threading
 
 from Tkinter import Tk
 from tkFileDialog import askopenfilename
@@ -28,27 +29,40 @@ class OculusMaximus():
 		self.Images_Root_Folder = "img/"
 		self.Resources_Root_Folder = "res/"
 
+		self.DispImageLock = threading.Lock()
+		self.CurrentHaarRecsLock = threading.Lock()
+
+		#Keeps Track of Current Haar Wavelet
+		self._CurrentHaarXML = self.Resources_Root_Folder+"haarFilter_Face_Basic/"
+
 		#Check to see if record directorys exists
 		for checkDirectory in [ self.Videos_Root_Folder, self.Images_Root_Folder, self.Resources_Root_Folder]:
-
 			if not os.path.isdir(checkDirectory):
 				os.makedirs(checkDirectory)
 				print "No "+checkDirectory+" Directory... EmptyOne Created"
 
-		#Sets some initial Flag Variables
+		#Sets some initial class Flag Variables & Counters
 		self._haarDetect_Flag = False
 		self._haarMulti_Flag = False
+		self._haarCounter = 0
+		self._haarCurrentRects = []
+
 		self._Run_Flag = True
 		self._RecordVideo = False
 		
+		#Variable to keep track of last image capture
+		self._LastImageCapture = datetime.datetime.now()		
+
+		#Heres how i create those file viewer dialog boxes
 		Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-		filename =  askopenfilename(initialdir = self.Resources_Root_Folder+"haarFilter_Face_Basic/")# show an "Open" dialog box and return the path to the selected file
+		filename =  askopenfilename(initialdir = self._CurrentHaarXML)# show an "Open" dialog box and return the path to the selected file
 		
 		#default haar Rec Directory
 		if os.path.isfile(filename):
 
 			self._haarRecFilterFlag = (True, None)
 			self._haarRecogFilter = filename
+			self._CurrentHaarXML = filename
 		
 		elif os.path.isfile(self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
 			print "WOOPC Something woonkie happened with your haar filter selection...\nhad to default to: "+self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
@@ -68,6 +82,19 @@ class OculusMaximus():
 		#Create the Video Interfaces
 		self._MainCaptureIterFace = cv2.VideoCapture(0)
 		
+
+	def RunDetectionThread(self, orig_img, output_img):
+
+		orig_img = cv2.GaussianBlur(orig_img, (5,5), 0)
+	
+		if self._haarCounter%self._haarDetectInterval==0:
+			tempRecs, img = self.haarDetect(orig_img)
+
+			self.CurrentHaarRecsLock.acquire()
+			try:
+				self._haarCurrentRects = tempRecs
+			finally:
+				self.CurrentHaarRecsLock.release()
 
 	def haarDetect(self, img):
 	    rects = self.cascade.detectMultiScale(img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20,20))
@@ -91,38 +118,53 @@ class OculusMaximus():
 
 		#Check If i want output shown
 		if self._showOutput:
-			cv2.namedWindow("OutPut") #Create The Output Window
+			cv2.namedWindow("OutPut "+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)))+" "
+							+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)))) #Create The Output Window
 
 		#Initializ some counter variables 
-		_haarCounter = 0
 		_vidcount = 0
 		_imgcount = 0
 
 		#Variable used to store open Output video file reference
 		_videoOut = None
 
+
+		currentCaptureTime = datetime.datetime.now()
+
 		while(self._Run_Flag):
 
+			#Capture New Frame and record when you did it
 			_,orig_img = self._MainCaptureIterFace.read()
+			currentCaptureTime = datetime.datetime.now()
+			currentFPS = 1.0/(currentCaptureTime-self._LastImageCapture).total_seconds()
+
+			self._LastImageCapture = currentCaptureTime
+
+			#Flip the image so its mirrored and make a copy to be used later
 			orig_img = cv2.flip(orig_img, 1)
 			output_img = orig_img.copy()
 
 			if (self._haarDetect_Flag == True):
+				t = threading.Thread(target=self.RunDetectionThread, args = (orig_img.copy(),output_img))
+				t.start()
 
-				orig_img = cv2.GaussianBlur(orig_img, (5,5), 0)
-			
-				if _haarCounter%self._haarDetectInterval==0:
-					rects, img = self.haarDetect(orig_img)
-					
-				self.box(rects, output_img)
-				_haarCounter+=1
+				self.CurrentHaarRecsLock.acquire()
+				try:
+					self.box(self._haarCurrentRects, output_img)
+					self._haarCounter+=1
+				finally:
+					self.CurrentHaarRecsLock.release()
 
 			if self._RecordVideo:
 				_videoOut.write(output_img)
 
 
 			if self._showOutput:
-				cv2.imshow("OutPut",output_img)
+
+				cv2.putText(output_img, str(currentFPS),(5,int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0,0,0))
+
+				cv2.imshow("OutPut "+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)))+" "
+							+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))) ,output_img)
 
 			#I Never rember what wait key does 
 			#But one of the best things is that you can pull keypresses
@@ -218,13 +260,14 @@ class OculusMaximus():
 				#Capture Image
 				cv2.imwrite(self.Images_Root_Folder+"SnapShop("+str(_imgcount)+").jpg", output_img)
 				
-				#Inc counter Variable
+				#Inc counter Variableh
 				_imgcount+=1
 
 			#case you want to know what key you pressed
 			elif x != -1:
 				print "Key Press ==",x
 	
+
 	#How to make a propertry 
 	#-------------------------------------- VVV RIGHT HERE!!! VVV
 	#<property_name> = property(<getter_Method_Name>, <setter_Method_Name>)
