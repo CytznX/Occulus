@@ -29,8 +29,6 @@ class OculusMaximus():
 		self.Images_Root_Folder = "img/"
 		self.Resources_Root_Folder = "res/"
 
-		self.DispImageLock = threading.Lock()
-		self.CurrentHaarRecsLock = threading.Lock()
 
 		#Keeps Track of Current Haar Wavelet
 		self._CurrentHaarXML = self.Resources_Root_Folder+"haarFilter_Face_Basic/"
@@ -44,12 +42,18 @@ class OculusMaximus():
 		#Sets some initial class Flag Variables & Counters
 		self._haarDetect_Flag = False
 		self._haarMulti_Flag = False
-		self._haarCounter = 0
-		self._haarCurrentRects = []
-
 		self._Run_Flag = True
 		self._RecordVideo = False
-		
+
+		#Concurency and Effiecientcy stuff for haar detection threads
+		self.CurrentHaarRecsLock = threading.Lock()#IdK if i should declare this variable as "hidden" or not... =/
+		self._haarCurrentRects = []
+		self._haarCounter = 0
+
+		self.CurrentRunningThreads = []
+		self.ThreadWatcher = threading.Thread(target=self.DetectionThreadMaintance, args = ())
+		self.ThreadWatcher.start()
+
 		#Variable to keep track of last image capture
 		self._LastImageCapture = datetime.datetime.now()		
 
@@ -114,6 +118,23 @@ class OculusMaximus():
 	def compare(self, rects, img):
 		crop_img = img[y1:y2, x1:x2, :] 
 		
+
+	def DetectionThreadMaintance(self):
+		while self._Run_Flag :
+			for DetectionThread in self.CurrentRunningThreads:
+				if not DetectionThread.isAlive():
+					self.CurrentRunningThreads.remove(DetectionThread)
+
+			time.sleep(1)
+
+		print "Maintanance Thread is trying to End..."
+
+		for DetectionThread in self.CurrentRunningThreads:
+			DetectionThread.join()
+
+		print "Maintanance Thread has Ended..."
+
+
 	def run(self):
 
 		#Check If i want output shown
@@ -145,8 +166,10 @@ class OculusMaximus():
 			output_img = orig_img.copy()
 
 			if (self._haarDetect_Flag == True):
+
 				t = threading.Thread(target=self.RunDetectionThread, args = (orig_img.copy(),output_img))
 				t.start()
+				self.CurrentRunningThreads.append(t)
 
 				self.CurrentHaarRecsLock.acquire()
 				try:
@@ -180,6 +203,8 @@ class OculusMaximus():
 					_videoOut.release()
 
 				print "Bailing Out... Cya!!!"
+				self.ThreadWatcher.join()
+				print "Le fin"
 
 			#IF F is pressed do some basic Haar recognition
 			elif x & 0xFF == ord('h'):
