@@ -45,125 +45,18 @@ class OculusMaximus():
 		self._Run_Flag = True
 		self._RecordVideo = False
 
-		#Concurency and Effiecientcy stuff for haar detection threads
-		self._CurrentHaarRecsLock = threading.Lock()#IdK if i should declare this variable as "hidden" or not... =/
-		self._haarCurrentRects = ([],0)
-		self._haarCounter = 0
-
-		#Thread Resource Managment Holder and Managment
-		self._CurrentRunningThreads = []
-		self._ThreadWatcher = threading.Thread(target=self._DetectionThreadMaintance, args = ())
-		self._ThreadWatcher.start()
-
-		#Thread Printer Managment
-		self._ToBePrinted = []
-		self._PrintLock = threading.Lock()
-		self._PrinterThread = threading.Thread(target=self._PrintThread, args = ())
-		self._PrinterThread.start()
-
-		#Variable to keep track of last image capture
-		self._LastImageCapture = datetime.datetime.now()		
-
 		#Heres how i create those file viewer dialog boxes
 		Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
 		filename =  askopenfilename(initialdir = self._CurrentHaarXML)# show an "Open" dialog box and return the path to the selected file
 		
-		#default haar Rec Directory
-		if os.path.isfile(filename):
-
-			self._haarRecFilterFlag = (True, None)
-			self._haarRecogFilter = filename
-			self._CurrentHaarXML = filename
-		
-		elif os.path.isfile(self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
-			print "WOOPC Something woonkie happened with your haar filter selection...\nhad to default to: "+self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
-			self._haarRecFilterFlag = (True, None)
-			self._haarRecogFilter = self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
-		
-		else :
-			self._haarRecFilterFlag = (False, "File Doesnt Exist")
-
-		#Pull in the cascade feature template we want to use
-		try:
-			self.cascade = cv2.CascadeClassifier(self._haarRecogFilter)
-		except Exception, e:
-			self._haarRecFilterFlag = (False, e)
-
-
 		#Create the Video Interfaces
 		self._MainCaptureIterFace = cv2.VideoCapture(0)
-		
 
-	def _PrintThread(self):
-  
-		#While Our Program is running
-		while self._Run_Flag:
+		#Calculates FPS
+		self._LastImageCapture = datetime.datetime.now()
 
-			#If There is something to be Printed Lock the array
-			if not self._ToBePrinted == []:
+
 	
-				#Print the first element of array
-				print self._ToBePrinted.pop(0)
-
-			#else Sleep the Thread and wait....
-			else:
-				time.sleep(1)
-
-	def _DetectionThreadMaintance(self):
-
-		#Stay operational so long as the program is running
-		while self._Run_Flag :
-
-			#Itterate through all st
-			for DetectionThreadM in self._CurrentRunningThreads:
-
-				#If the Thread is dead... Remove it from List
-				if not DetectionThreadM.isAlive():
-					self._CurrentRunningThreads.remove(DetectionThreadM)
-
-			time.sleep(1)
-
-		#When we want to quit the program iterate acrross all reamining running threads and call .join()
-		for DetectionThreadM in self._CurrentRunningThreads:
-			DetectionThreadM.join()
-
-
-	def _DetectionThread(self, orig_img, output_img, haarCount):
-
-		orig_img = cv2.GaussianBlur(orig_img, (5,5), 0)
-	
-		if self._haarCounter%self._haarDetectInterval==0:
-			tempRecs, img = self.haarDetect(orig_img)
-
-			self._CurrentHaarRecsLock.acquire()
-			try:
-				if(haarCount>self._haarCurrentRects[1]):
-					self._haarCurrentRects = (tempRecs, haarCount)
-
-				else:
-					self._ToBePrinted.append("Collision At HaarCount: "+str(haarCount))
-			finally:
-				self._CurrentHaarRecsLock.release()
-
-	def haarDetect(self, img):
-	    rects = self.cascade.detectMultiScale(img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20,20))
-
-	    if len(rects) == 0:
-	        return [], img
-	    rects[:, 2:] += rects[:, :2]
-	    return rects, img
-
-	#Draw Rectangles on a image
-	def box(self, rects, img):
-		for x1, y1, x2, y2 in rects:
-			cv2.rectangle(img, (x1, y1), (x2, y2), (127, 255, 0), 2)
-	
-
-	#NOT DONE YET
-	def compare(self, rects, img):
-		crop_img = img[y1:y2, x1:x2, :] 
-
-
 	def run(self):
 
 		#Check If i want output shown
@@ -199,29 +92,15 @@ class OculusMaximus():
 
 			if (self._haarDetect_Flag == True):
 
-				#Create New Detection Thread
-				t = threading.Thread(target=self._DetectionThread, args = (orig_img.copy(), output_img, self._haarCounter))
-				t.start() #Start the Thread....
-
-				#Add the Thread to current watch list
-				self._CurrentRunningThreads.append(t)
-
-				#Then Aquire the Recs lock and clone self._haarCurrentRects 
-				self._CurrentHaarRecsLock.acquire()
-				try:
-					_tmpRecs = self._haarCurrentRects[0]
-					self._haarCounter+=1
-				finally:
-					self._CurrentHaarRecsLock.release()
-
-				#Draw whatever the most resent /thread was found
-				self.box(_tmpRecs, output_img)
+				#<<<<<<<----------------------------------------------------<<<< FIX ME!!!!
+				pass
 				
 
+			#Write Video out to selected file
 			if self._RecordVideo:
 				_videoOut.write(output_img)
 
-
+			#Display image
 			if self._showOutput:
 
 				cv2.putText(output_img, str(currentFPS),(5,int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0,0,0))
@@ -243,58 +122,27 @@ class OculusMaximus():
 					_videoOut.release()
 
 				print "Bailing Out... Cya!!!"
-				self._ThreadWatcher.join()
-				self._PrinterThread.join()
+				#-----------------------------------------
+				#Make sure to join all threads Bellow
+				#-----------------------------------------
+
 				print "Le fin"
 
 			#IF F is pressed do some basic Haar recognition
 			elif x & 0xFF == ord('h'):
-				if self._haarRecFilterFlag[0]:
-					self._haarDetect_Flag = not self._haarDetect_Flag
-
-					#value_when_true if condition else value_when_false
-					print "Haar Filter Tracking " + ("on" if self._haarDetect_Flag else "off")
-				else:
-					print "Nope Sry... Something went wrong with Resource: "+self._haarRecogFilter, self._haarRecFilterFlag[1]
+				print "U press the Haar detect button"
 
 			elif x & 0xFF == ord('n'):
-
+				#Get New Filter
 				#Ask for new file
 				filename =  askopenfilename(initialdir = self.Resources_Root_Folder+"haarFilter_Face_Basic/")# show an "Open" dialog box and return the path to the selected file
-		
-				#Make sure file exists
-				if os.path.isfile(filename):
-
-					self._haarRecFilterFlag = (True, None)
-					self._haarRecogFilter = filename
-				
-				elif os.path.isfile(self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
-					print "WOOPC Something woonkie happened with your haar filter selection...\nhad toh default to: "+self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
-					self._haarRecFilterFlag = (True, None)
-					self._haarRecogFilter = self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
-				
-				else :
-					self._haarRecFilterFlag = (False, "File Doesnt Exist")
-
-				#Pull in the cascade feature template we want to use
-				try:
-					self.cascade = cv2.CascadeClassifier(self._haarRecogFilter)
-				except Exception, e:
-					self._haarRecFilterFlag = (False, e)
+				print "new file requested", filename
 
 			#If M is pressed use multi haarfilters in selected dir
 			elif x & 0xFF == ord('m'):
-				if self._haarMulti_Flag[0] == False:
+				dirname = askdirectory(initialdir=self.Resources_Root_Folder, title='Select your pictures folder')
+				print "The Directory name: ", dirname
 
-					dirname = askdirectory(parent=root, initialdir='/home/', title='Select your pictures folder')
-					print "The Directory name: ", dirname
-
-					if os.path.isdir(dirname):
-						self._haarMulti_Flag = (True, dirname)
-					else:
-						self._haarMulti_Flag = (False, None)
-				else:
-					self._haarMulti_Flag = (False, None)
 
 
 			#If Enter Is pressed Enter sart video Record
