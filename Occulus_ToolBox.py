@@ -46,13 +46,20 @@ class OculusMaximus():
 		self._RecordVideo = False
 
 		#Concurency and Effiecientcy stuff for haar detection threads
-		self.CurrentHaarRecsLock = threading.Lock()#IdK if i should declare this variable as "hidden" or not... =/
-		self._haarCurrentRects = []
+		self._CurrentHaarRecsLock = threading.Lock()#IdK if i should declare this variable as "hidden" or not... =/
+		self._haarCurrentRects = ([],0)
 		self._haarCounter = 0
 
-		self.CurrentRunningThreads = []
-		self.ThreadWatcher = threading.Thread(target=self.DetectionThreadMaintance, args = ())
-		self.ThreadWatcher.start()
+		#Thread Resource Managment Holder and Managment
+		self._CurrentRunningThreads = []
+		self._ThreadWatcher = threading.Thread(target=self._DetectionThreadMaintance, args = ())
+		self._ThreadWatcher.start()
+
+		#Thread Printer Managment
+		self._ToBePrinted = []
+		self._PrintLock = threading.Lock()
+		self._PrinterThread = threading.Thread(target=self._PrintThread, args = ())
+		self._PrinterThread.start()
 
 		#Variable to keep track of last image capture
 		self._LastImageCapture = datetime.datetime.now()		
@@ -87,18 +94,56 @@ class OculusMaximus():
 		self._MainCaptureIterFace = cv2.VideoCapture(0)
 		
 
-	def RunDetectionThread(self, orig_img, output_img):
+	def _PrintThread(self):
+  
+		#While Our Program is running
+		while self._Run_Flag:
+
+			#If There is something to be Printed Lock the array
+			if not self._ToBePrinted == []:
+	
+				#Print the first element of array
+				print self._ToBePrinted.pop(0)
+
+			#else Sleep the Thread and wait....
+			else:
+				time.sleep(1)
+
+	def _DetectionThreadMaintance(self):
+
+		#Stay operational so long as the program is running
+		while self._Run_Flag :
+
+			#Itterate through all st
+			for DetectionThreadM in self._CurrentRunningThreads:
+
+				#If the Thread is dead... Remove it from List
+				if not DetectionThreadM.isAlive():
+					self._CurrentRunningThreads.remove(DetectionThreadM)
+
+			time.sleep(1)
+
+		#When we want to quit the program iterate acrross all reamining running threads and call .join()
+		for DetectionThreadM in self._CurrentRunningThreads:
+			DetectionThreadM.join()
+
+
+	def _DetectionThread(self, orig_img, output_img, haarCount):
 
 		orig_img = cv2.GaussianBlur(orig_img, (5,5), 0)
 	
 		if self._haarCounter%self._haarDetectInterval==0:
 			tempRecs, img = self.haarDetect(orig_img)
 
-			self.CurrentHaarRecsLock.acquire()
+			self._CurrentHaarRecsLock.acquire()
 			try:
-				self._haarCurrentRects = tempRecs
+				if(haarCount>self._haarCurrentRects[1]):
+					self._haarCurrentRects = (tempRecs, haarCount)
+
+				else:
+					self._ToBePrinted.append("Collision At HaarCount: "+str(haarCount))
 			finally:
-				self.CurrentHaarRecsLock.release()
+				self._CurrentHaarRecsLock.release()
 
 	def haarDetect(self, img):
 	    rects = self.cascade.detectMultiScale(img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20,20))
@@ -117,22 +162,6 @@ class OculusMaximus():
 	#NOT DONE YET
 	def compare(self, rects, img):
 		crop_img = img[y1:y2, x1:x2, :] 
-		
-
-	def DetectionThreadMaintance(self):
-		while self._Run_Flag :
-			for DetectionThread in self.CurrentRunningThreads:
-				if not DetectionThread.isAlive():
-					self.CurrentRunningThreads.remove(DetectionThread)
-
-			time.sleep(1)
-
-		print "Maintanance Thread is trying to End..."
-
-		for DetectionThread in self.CurrentRunningThreads:
-			DetectionThread.join()
-
-		print "Maintanance Thread has Ended..."
 
 
 	def run(self):
@@ -148,6 +177,9 @@ class OculusMaximus():
 
 		#Variable used to store open Output video file reference
 		_videoOut = None
+
+		#Create Temporary holding variable for Shared Recs Variable Clone
+		_tmpRecs = []
 
 
 		currentCaptureTime = datetime.datetime.now()
@@ -167,16 +199,24 @@ class OculusMaximus():
 
 			if (self._haarDetect_Flag == True):
 
-				t = threading.Thread(target=self.RunDetectionThread, args = (orig_img.copy(),output_img))
-				t.start()
-				self.CurrentRunningThreads.append(t)
+				#Create New Detection Thread
+				t = threading.Thread(target=self._DetectionThread, args = (orig_img.copy(), output_img, self._haarCounter))
+				t.start() #Start the Thread....
 
-				self.CurrentHaarRecsLock.acquire()
+				#Add the Thread to current watch list
+				self._CurrentRunningThreads.append(t)
+
+				#Then Aquire the Recs lock and clone self._haarCurrentRects 
+				self._CurrentHaarRecsLock.acquire()
 				try:
-					self.box(self._haarCurrentRects, output_img)
+					_tmpRecs = self._haarCurrentRects[0]
 					self._haarCounter+=1
 				finally:
-					self.CurrentHaarRecsLock.release()
+					self._CurrentHaarRecsLock.release()
+
+				#Draw whatever the most resent /thread was found
+				self.box(_tmpRecs, output_img)
+				
 
 			if self._RecordVideo:
 				_videoOut.write(output_img)
@@ -203,7 +243,8 @@ class OculusMaximus():
 					_videoOut.release()
 
 				print "Bailing Out... Cya!!!"
-				self.ThreadWatcher.join()
+				self._ThreadWatcher.join()
+				self._PrinterThread.join()
 				print "Le fin"
 
 			#IF F is pressed do some basic Haar recognition
@@ -228,7 +269,7 @@ class OculusMaximus():
 					self._haarRecogFilter = filename
 				
 				elif os.path.isfile(self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
-					print "WOOPC Something woonkie happened with your haar filter selection...\nhad to default to: "+self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
+					print "WOOPC Something woonkie happened with your haar filter selection...\nhad toh default to: "+self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
 					self._haarRecFilterFlag = (True, None)
 					self._haarRecogFilter = self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
 				
