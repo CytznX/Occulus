@@ -100,14 +100,13 @@ class OculusMaximus():
 		while self._Run_Flag:
 
 			#If There is something to be Printed Lock the array
-			if not self._ToBePrinted == []:
+			while not self._ToBePrinted == []:
 	
 				#Print the first element of array
 				print self._ToBePrinted.pop(0)
 
 			#else Sleep the Thread and wait....
-			else:
-				time.sleep(1)
+			time.sleep(1)
 
 	def _DetectionThreadMaintance(self):
 
@@ -146,12 +145,12 @@ class OculusMaximus():
 				self._CurrentHaarRecsLock.release()
 
 	def haarDetect(self, img):
-	    rects = self.cascade.detectMultiScale(img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20,20))
+		rects = self.cascade.detectMultiScale(img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20,20))
 
-	    if len(rects) == 0:
-	        return [], img
-	    rects[:, 2:] += rects[:, :2]
-	    return rects, img
+		if len(rects) == 0:
+			return [], img
+		rects[:, 2:] += rects[:, :2]
+		return rects, img
 
 	#Draw Rectangles on a image
 	def box(self, rects, img):

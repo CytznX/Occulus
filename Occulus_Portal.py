@@ -16,6 +16,8 @@ from Tkinter import Tk
 from tkFileDialog import askopenfilename
 from tkFileDialog import askdirectory
 
+import Occulus_Threader
+
 class OculusMaximus():
 
 	def __init__(self, showOutput = True, haarDetectInterval = 2):
@@ -28,7 +30,6 @@ class OculusMaximus():
 		self.Videos_Root_Folder = "vid/"
 		self.Images_Root_Folder = "img/"
 		self.Resources_Root_Folder = "res/"
-
 
 		#Keeps Track of Current Haar Wavelet
 		self._CurrentHaarXML = self.Resources_Root_Folder+"haarFilter_Face_Basic/"
@@ -45,17 +46,32 @@ class OculusMaximus():
 		self._Run_Flag = True
 		self._RecordVideo = False
 
+		#Start The Overloard
+		self._ThreadOverLoard = Occulus_Threader.OcculusOverloard()
+		self._ThreadOverLoard.start()
+
 		#Heres how i create those file viewer dialog boxes
 		Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-		filename =  askopenfilename(initialdir = self._CurrentHaarXML)# show an "Open" dialog box and return the path to the selected file
+		_filename =  askopenfilename(initialdir = self._CurrentHaarXML, title='Select Your Initial Haar Filter')# show an "Open" dialog box and return the path to the selected file
+
+
+		self._XML_isValid = self._ThreadOverLoard.newFilter(_filename)
 		
+		if self._XML_isValid[0]:
+			self._CurrentHaarXML = _filename
+		else:
+			print "---Something Bad Happend While Loading Haar XML---\n", self._XML_isValid[1]
+
 		#Create the Video Interfaces
 		self._MainCaptureIterFace = cv2.VideoCapture(0)
 
 		#Calculates FPS
 		self._LastImageCapture = datetime.datetime.now()
 
-
+	#Draw Rectangles on a image
+	def box(self, rects, img, color = (127, 255, 0)):
+		for x1, y1, x2, y2 in rects:
+			cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
 	
 	def run(self):
 
@@ -71,30 +87,27 @@ class OculusMaximus():
 		#Variable used to store open Output video file reference
 		_videoOut = None
 
-		#Create Temporary holding variable for Shared Recs Variable Clone
-		_tmpRecs = []
-
-
-		currentCaptureTime = datetime.datetime.now()
 
 		while(self._Run_Flag):
 
 			#Capture New Frame and record when you did it
 			_,orig_img = self._MainCaptureIterFace.read()
-			currentCaptureTime = datetime.datetime.now()
-			currentFPS = 1.0/(currentCaptureTime-self._LastImageCapture).total_seconds()
 
-			self._LastImageCapture = currentCaptureTime
+			#Comput Fps
+			_currentCaptureTime = datetime.datetime.now()
+			currentFPS = 1.0/(_currentCaptureTime-self._LastImageCapture).total_seconds()
+			self._LastImageCapture = _currentCaptureTime
 
 			#Flip the image so its mirrored and make a copy to be used later
 			orig_img = cv2.flip(orig_img, 1)
 			output_img = orig_img.copy()
+			
+			if self._haarDetect_Flag:
 
-			if (self._haarDetect_Flag == True):
+				#I pass original because the overloard makes an internal copy that it passes off to its subthreads
+				self._ThreadOverLoard.addFrame4Haar(orig_img)
+				self.box(self._ThreadOverLoard.getLatestHaarAnalysis(), output_img)
 
-				#<<<<<<<----------------------------------------------------<<<< FIX ME!!!!
-				pass
-				
 
 			#Write Video out to selected file
 			if self._RecordVideo:
@@ -103,7 +116,12 @@ class OculusMaximus():
 			#Display image
 			if self._showOutput:
 
-				cv2.putText(output_img, str(currentFPS),(5,int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0,0,0))
+				_DispText = "FPS: %02d"%(currentFPS)
+
+				if self._haarDetect_Flag: 
+					_DispText += " #Threads: %d SleepTime: %d" % self._ThreadOverLoard.getInfo() 
+
+				cv2.putText(output_img, _DispText,(5,int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0,0,0))
 
 				cv2.imshow("OutPut "+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)))+" "
 							+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))) ,output_img)
@@ -117,6 +135,7 @@ class OculusMaximus():
 				cv2.destroyAllWindows()
 				self._MainCaptureIterFace.release()
 				self._Run_Flag = False
+				self._ThreadOverLoard.stop()
 
 				if self._RecordVideo:
 					_videoOut.release()
@@ -126,21 +145,29 @@ class OculusMaximus():
 				#Make sure to join all threads Bellow
 				#-----------------------------------------
 
+				self._ThreadOverLoard.join() #Wait for the Overloard to close out clean
+
 				print "Le fin"
 
 			#IF F is pressed do some basic Haar recognition
 			elif x & 0xFF == ord('h'):
-				print "U press the Haar detect button"
+				if self._XML_isValid[0]:
+					self._haarDetect_Flag = not self._haarDetect_Flag
+
+					#value_when_true if condition else value_when_false
+					print "Haar Filter Tracking " + ("on" if self._haarDetect_Flag else "off")
+				else:
+					print "---Nope Sry... Something went wrong with XML Resource---\n", self._XML_isValid
 
 			elif x & 0xFF == ord('n'):
 				#Get New Filter
 				#Ask for new file
-				filename =  askopenfilename(initialdir = self.Resources_Root_Folder+"haarFilter_Face_Basic/")# show an "Open" dialog box and return the path to the selected file
+				filename =  askopenfilename(initialdir = self.Resources_Root_Folder+"haarFilter_Face_Basic/", title='Select Your Haar Filter')# show an "Open" dialog box and return the path to the selected file
 				print "new file requested", filename
 
 			#If M is pressed use multi haarfilters in selected dir
 			elif x & 0xFF == ord('m'):
-				dirname = askdirectory(initialdir=self.Resources_Root_Folder, title='Select your pictures folder')
+				dirname = askdirectory(initialdir=self.Resources_Root_Folder, title='Select A Directory Folder')
 				print "The Directory name: ", dirname
 
 
