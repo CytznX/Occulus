@@ -1,11 +1,21 @@
+"""
+This Script Manages Thread Overloard class wich controlls all image analyisis threads
 
+Created By: CitizenX
+Python 2.7
+"""
+
+
+#Importing Necisary moduals
 import os
 import threading
 import time, datetime
 import numpy as np
 import cv2, cv
 
-#Thread that watches Everything... Litterally
+from Queue import Queue
+
+#Thread class that watches Everything... Litterally
 class OcculusOverloard(threading.Thread):
 
 	#Deh constructor... Muhahaha
@@ -21,7 +31,6 @@ class OcculusOverloard(threading.Thread):
 
 		#Meh its a variable cause i wanted to see if i can auto scale sleeptime
 		self._sleepTimeMain = 1
-		self._sleepTimePrinter = 1
 
 		#The Threads RunFlag
 		self._Run_Flag = True
@@ -39,32 +48,31 @@ class OcculusOverloard(threading.Thread):
 		self._haarRecFilterFlag = False
 
 		#Thread Printer Managment
-		self._ToBePrinted = []
+		self._ToBePrinted = Queue()
 		self._PrintLock = threading.Lock() #Dont think ill need this... but will see
-		self._PrinterThread = threading.Thread(target=self._PrinterSubThread, args = ())
-		self._PrinterThread.start()
 
 	def newFilter(self, filename):
 
-		#default haar Rec Directory
+		#Check if passed filename is valid
 		if os.path.isfile(filename):
 
-			self._haarRecFilterFlag = (True, None)
-			self._haarRecogFilter = filename
+			self._haarRecFilterFlag = (True, filename)
 			self._CurrentHaarXML = filename
 		
-		elif os.path.isfile(self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
-			print "WOOPC Something woonkie happened with your haar filter selection...\nhad to default to: "+self.Resources_Root_Folder+"haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"
-			self._haarRecFilterFlag = (True, None)
-			self._haarRecogFilter = self._DefaultHaarFilter
+		#else notify user and my use default file
+		elif os.path.isfile(self._DefaultHaarFilter):
+			self._ToBePrinted.put( "WOOPC Something woonkie happened with your haar filter selection...\nhad to default to: "+self._DefaultHaarFilter)
+			self._haarRecFilterFlag = (True, self._DefaultHaarFilter)
 		
+		#else notify user and my use default file
 		else :
-			self._haarRecFilterFlag = (False, "File Doesnt Exist")
+			self._ToBePrinted.put( "UH-OH... Something realy bad has happend, no default haar filter either")
+			self._haarRecFilterFlag = (False, None)
 			self._CurrentHaarXML = None
 
 		#Pull in the cascade feature template we want to use
 		try:
-			self.cascade = cv2.CascadeClassifier(self._haarRecogFilter)
+			self.cascade = cv2.CascadeClassifier(self._haarRecFilterFlag[1])
 		except Exception, e:
 			self._haarRecFilterFlag = (False, e)
 
@@ -79,17 +87,13 @@ class OcculusOverloard(threading.Thread):
 			if self._haarCounter%self._haarDetectInterval==0:
 
 				#Create New Detection Thread
-				t = threading.Thread(target=self._DetectionSubThread, args = (img.copy(), self._haarCounter))
-				t.start() #Start the Thread....
-
-				#Add the Thread to current watch list
-				self._CurrentRunningThreads.append(t)
+				threading.Thread(target=self._DetectionSubThread, args = (img.copy(), self._haarCounter)).start() #Start the Thread....
 
 			#Inc the Haar counter
 			self._haarCounter +=1
 
 	def getInfo(self):
-		return len(self._CurrentRunningThreads), self._sleepTimeMain
+		return threading.active_count(), self._sleepTimeMain
 
 	def getLatestHaarAnalysis(self):
 		
@@ -105,21 +109,8 @@ class OcculusOverloard(threading.Thread):
 		return returnRecs
 
 	def getCurrentHaarXML(self):
-		return self._CurrentHaarXML
+		return self._haarRecFilterFlag[1]
 
-	def _PrinterSubThread(self):
-  
-		#While Our Program is running
-		while self._Run_Flag:
-
-			#If There is something to be Printed Lock the array
-			while not self._ToBePrinted == []:
-	
-				#Print the first element of array
-				print self._ToBePrinted.pop(0)
-
-			#else Sleep the Thread and wait....
-			time.sleep(1)
 
 	def _DetectionSubThread(self, passed_img, haarCount):
 
@@ -140,7 +131,7 @@ class OcculusOverloard(threading.Thread):
 				self._haarCurrentRects = (rects, haarCount)
 
 			else:
-				self._ToBePrinted.append("Collision At HaarCount: "+str(haarCount))
+				self._ToBePrinted.put("Collision At HaarCount: "+str(haarCount))
 
 		finally:
 			self._CurrentHaarRecsLock.release()
@@ -154,30 +145,19 @@ class OcculusOverloard(threading.Thread):
 		#Stay operational so long as the program is running
 		while self._Run_Flag:
 
-			#If the arrays empty wait sometime
-			if self._CurrentRunningThreads == []:
-				self._sleepTimeMain+=0.03
-				time.sleep(self._sleepTimeMain)
-
-			#Else I tend the flock
+						#If There is something to be Printed Lock the array
+			if self._ToBePrinted.empty():
+				self._sleepTimeMain+=0.01
 			else:
-
-				#If the s
 				if self._sleepTimeMain >= 0.01:
 					self._sleepTimeMain-=0.01
 
-				#Itterate through all availible threads
-				for DetectionThreadM in self._CurrentRunningThreads:
+				#Print the first element of array
+				print self._ToBePrinted.get()
 
-					#If the Thread is dead... Remove it from List
-					if not DetectionThreadM.isAlive():
-						self._CurrentRunningThreads.remove(DetectionThreadM)
+			#else Sleep the Thread and wait....
+			time.sleep(self._sleepTimeMain)
 
-				#Go to sleep... <3 ... <3 ... <3
-				time.sleep(self._sleepTimeMain)
+			
 
-		#When we want to quit the program iterate acrross all reamining running threads and call .join()
-		for DetectionThreadM in self._CurrentRunningThreads:
-			DetectionThreadM.join()
-
-		self._PrinterThread.join()
+	

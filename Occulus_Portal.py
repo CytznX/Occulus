@@ -119,7 +119,8 @@ class OculusMaximus():
 				_DispText = "FPS: %02d"%(currentFPS)
 
 				if self._haarDetect_Flag: 
-					_DispText += " #Threads: %d SleepTime: %d" % self._ThreadOverLoard.getInfo() 
+					Temp = self._ThreadOverLoard.getInfo()
+					_DispText += " #Threads: %d SleepTime: %.2f" % Temp 
 
 				cv2.putText(output_img, _DispText,(5,int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0,0,0))
 
@@ -162,8 +163,15 @@ class OculusMaximus():
 			elif x & 0xFF == ord('n'):
 				#Get New Filter
 				#Ask for new file
-				filename =  askopenfilename(initialdir = self.Resources_Root_Folder+"haarFilter_Face_Basic/", title='Select Your Haar Filter')# show an "Open" dialog box and return the path to the selected file
-				print "new file requested", filename
+				_filename =  askopenfilename(initialdir = self.Resources_Root_Folder+"haarFilter_Face_Basic/", title='Select Your Haar Filter')# show an "Open" dialog box and return the path to the selected file
+				print "new file requested", _filename
+
+				self._XML_isValid = self._ThreadOverLoard.newFilter(_filename)
+
+				if self._XML_isValid[0]:
+					self._CurrentHaarXML = _filename
+				else:
+					print "---Something Bad Happend While Loading Haar XML---\n", self._XML_isValid[1]
 
 			#If M is pressed use multi haarfilters in selected dir
 			elif x & 0xFF == ord('m'):
