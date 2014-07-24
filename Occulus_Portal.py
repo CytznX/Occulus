@@ -52,8 +52,9 @@ class OculusMaximus():
 
 		#Heres how i create those file viewer dialog boxes
 		Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
-		_filename = askopenfilename(initialdir=self._CurrentHaarXML, title='Select Your Initial Haar Filter')  # show an "Open" dialog box and return the path to the selected file
 
+		#Uncoment the back half to prompt at initialization
+		_filename = ""  # = askopenfilename(initialdir=self._CurrentHaarXML, title='Select Your Initial Haar Filter')  # show an "Open" dialog box and return the path to the selected file
 		self._XML_isValid = self._ThreadOverLoard.newFilter(_filename)
 
 		if self._XML_isValid[0]:
@@ -68,9 +69,10 @@ class OculusMaximus():
 		self._LastImageCapture = datetime.datetime.now()
 
 	#Draw Rectangles on a image
-	def box(self, rects, img, color=(127, 255, 0)):
-		for x1, y1, x2, y2 in rects:
-			cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+	def box(self, rectsContainer, img, color=(127, 255, 0)):
+		for rects in rectsContainer:
+			for x1, y1, x2, y2 in rects:
+				cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
 
 	def run(self):
 

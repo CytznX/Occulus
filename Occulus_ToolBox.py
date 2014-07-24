@@ -1,6 +1,6 @@
 
 """
-Original This skript innitialized the Occulus Program, 
+Original This skript innitialized the Occulus Program,
 Now its used to Hold/define  all user madeimage Analysis Algorithimss
 
 Created By: CitizenX

@@ -24,13 +24,12 @@ from Queue import Queue
 class OcculusOverloard(threading.Thread):
 
 	#Deh constructor... Muhahaha
-	def __init__(self, haarDetectInterval=1, ResRoot="res/", DefaultFilter="haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
+	def __init__(self, ResRoot="res/", DefaultFilter="haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
 
 		#Innitials As Thread
 		threading.Thread.__init__(self)
 
 		#Store Some Innit Variables
-		self._haarDetectInterval = haarDetectInterval
 		self.Resources_Root_Folder = ResRoot
 		self._DefaultHaarFilter = ResRoot+DefaultFilter
 
@@ -44,13 +43,14 @@ class OcculusOverloard(threading.Thread):
 		self._CurrentRunningThreads = []
 
 		#Concurency and Effiecientcy stuff for haar detection threads
-		self._CurrentHaarRecsLock = threading.Lock()  # IdK if i should declare this variable as "hidden" or not... =/
-		self._haarCurrentRects = ([], 0)
-		self._haarCounter = 0
+		self._CurrentHaarRecsLock = threading.Lock()
+		self._haarCurrentRects = []
 
 		#The Filter Flag for determine har filter validity and the current haarXML file
-		self._CurrentHaarXML = None
-		self._haarRecFilterFlag = False
+		self._haarRecFilterFlag = (False, None)
+
+		#Cascade variable for haar analysis
+		self._cascade = None
 
 		#Thread Printer Managment
 		self._ToBePrinted = Queue()
@@ -60,9 +60,7 @@ class OcculusOverloard(threading.Thread):
 
 		#Check if passed filename is valid
 		if os.path.isfile(filename):
-
 			self._haarRecFilterFlag = (True, filename)
-			self._CurrentHaarXML = filename
 
 		#else notify user and my use default file
 		elif os.path.isfile(self._DefaultHaarFilter):
@@ -73,11 +71,10 @@ class OcculusOverloard(threading.Thread):
 		else:
 			self._ToBePrinted.put("UH-OH... Something realy bad has happend, no default haar filter either")
 			self._haarRecFilterFlag = (False, None)
-			self._CurrentHaarXML = None
 
 		#Pull in the cascade feature template we want to use
 		try:
-			self.cascade = cv2.CascadeClassifier(self._haarRecFilterFlag[1])
+			self._cascade = cv2.CascadeClassifier(self._haarRecFilterFlag[1])
 		except Exception, e:
 			self._haarRecFilterFlag = (False, e)
 
@@ -88,14 +85,8 @@ class OcculusOverloard(threading.Thread):
 		#Checks To see if you have Actual Filter Loaded in
 		if self._haarRecFilterFlag[0]:
 
-			#Little salt and pepper i added for low power machines
-			if self._haarCounter % self._haarDetectInterval == 0:
-
-				#Create New Detection Thread
-				threading.Thread(target=self._DetectionSubThread, args = (img.copy(), self._haarCounter)).start()  # Start the Thread....
-
-			#Inc the Haar counter
-			self._haarCounter += 1
+			#Create New Detection Thread
+			threading.Thread(target=self._DetectionSubThread, args=(img.copy(), self._cascade)).start()  # Start the Thread....
 
 	def getInfo(self):
 		return threading.active_count(), self._sleepTimeMain
@@ -111,10 +102,14 @@ class OcculusOverloard(threading.Thread):
 
 		#Throw latest in greatest... =)
 		try:
-			returnRecs = self._haarCurrentRects[0]
+			returnRecs = self._haarCurrentRects
+			self._haarCurrentRects = []
 
 		finally:
 			self._CurrentHaarRecsLock.release()
+
+		#Debug
+		#self._ToBePrinted.put("RR Len: " + str(len(returnRecs)))
 
 		#return the container
 		return returnRecs
@@ -122,27 +117,24 @@ class OcculusOverloard(threading.Thread):
 	def getCurrentHaarXML(self):
 		return self._haarRecFilterFlag[1]
 
-	def _DetectionSubThread(self, passed_img, haarCount):
+	def _DetectionSubThread(self, passed_img, cascade):
 
 		#Perform a simple blur before Haar Analysis
 		passed_img = cv2.GaussianBlur(passed_img, (5, 5), 0)
 
 		#Perform Haar Analysis
-		rects = self.cascade.detectMultiScale(passed_img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20, 20))
+		rects = cascade.detectMultiScale(passed_img, 1.3, 4, cv2.cv.CV_HAAR_SCALE_IMAGE, (20, 20))
 
 		#If the list isnt empty do some formating and add it to master
 		if not len(rects) == 0:
 			rects[:, 2:] += rects[:, :2]
+		else:
+			rects = []
 
+		#Aquire The Lock and do our bizzz
 		self._CurrentHaarRecsLock.acquire()
-
 		try:
-			if(haarCount > self._haarCurrentRects[1]):
-				self._haarCurrentRects = (rects, haarCount)
-
-			else:
-				self._ToBePrinted.put("Collision At HaarCount: "+str(haarCount))
-
+			self._haarCurrentRects.append(rects)
 		finally:
 			self._CurrentHaarRecsLock.release()
 
@@ -157,10 +149,10 @@ class OcculusOverloard(threading.Thread):
 
 						#If There is something to be Printed Lock the array
 			if self._ToBePrinted.empty():
-				self._sleepTimeMain += 0.01
+				self._sleepTimeMain += 0.1
 			else:
-				if self._sleepTimeMain >= 0.01:
-					self._sleepTimeMain -= 0.01
+				if self._sleepTimeMain >= 0.1:
+					self._sleepTimeMain -= 0.1
 
 				#Print the first element of array
 				print self._ToBePrinted.get()
