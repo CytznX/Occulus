@@ -10,10 +10,12 @@ Python 2.7
 import os
 import threading
 import time
+import datetime
 import cv2
+import Occulus_ToolBox
+
 
 #Not needed yet but might
-import datetime
 import numpy as np
 
 #Grab a que to better handle exclusive access
@@ -24,7 +26,7 @@ from Queue import Queue
 class OcculusOverloard(threading.Thread):
 
 	#Deh constructor... Muhahaha
-	def __init__(self, ResRoot="res/", DefaultFilter="haarFilter_Face_Basic/haarcascade_frontalface_alt.xml"):
+	def __init__(self, ResRoot="res/", DefaultFilter="haarFilter_Face_Basic/haarcascade_frontalface_alt.xml", HaarThread=False, MotionThread=False):
 
 		#Innitials As Thread
 		threading.Thread.__init__(self)
@@ -49,12 +51,27 @@ class OcculusOverloard(threading.Thread):
 		#The Filter Flag for determine har filter validity and the current haarXML file
 		self._haarRecFilterFlag = (False, None)
 
+		#Haar analysis flag to add thread
+		self._addHaarThread = HaarThread
+
+		#Motion analysis flag to add thread
+		self.addMotionThread = MotionThread
+
 		#Cascade variable for haar analysis
 		self._cascade = None
+
+		#sets up location for storing motion images
+		self._motionImageQue = (None, None, None)
+		self._motionOutput = None
+		self._motionOutputLock = threading.Lock()
 
 		#Thread Printer Managment
 		self._ToBePrinted = Queue()
 		self._PrintLock = threading.Lock()  # Dont think ill need this... but will see
+
+	def setFlags(self, HaarFlag, MotionFlag):
+		self._addHaarThread = HaarFlag
+		self.addMotionThread = MotionFlag
 
 	def newFilter(self, filename):
 
@@ -80,18 +97,31 @@ class OcculusOverloard(threading.Thread):
 
 		return self._haarRecFilterFlag
 
-	def addFrame4Haar(self, img):
+	def addFrame(self, img):
 
 		#Checks To see if you have Actual Filter Loaded in
-		if self._haarRecFilterFlag[0]:
+		if self._haarRecFilterFlag[0] and self._addHaarThread:
 
 			#Create New Detection Thread
-			threading.Thread(target=self._DetectionSubThread, args=(img.copy(), self._cascade)).start()  # Start the Thread....
+			threading.Thread(target=self._HaarDetectionSubThread, args=(img.copy(), self._cascade)).start()  # Start the Thread....
+
+		#checks Motion analysis flag to add thread
+		if self.addMotionThread:
+
+			#Create Motion Thread
+			threading.Thread(target=self._MotionDetectionSubThread, args=(img.copy(),)).start()  # Start the Thread....
 
 	def getInfo(self):
 		return threading.active_count(), self._sleepTimeMain
 
-	#Used To Get Total Analysis
+	#Used To Get Motion Analysis
+	def getLatestMotionAnalysis(self, frames=False):
+		if frames:
+			return self._motionOutput, self._motionImageQue
+		else:
+			return self._motionOutput
+
+	#Used To Get Haar Analysis
 	def getLatestHaarAnalysis(self):
 
 		#Creates a storage container
@@ -117,7 +147,7 @@ class OcculusOverloard(threading.Thread):
 	def getCurrentHaarXML(self):
 		return self._haarRecFilterFlag[1]
 
-	def _DetectionSubThread(self, passed_img, cascade):
+	def _HaarDetectionSubThread(self, passed_img, cascade):
 
 		#Perform a simple blur before Haar Analysis
 		passed_img = cv2.GaussianBlur(passed_img, (5, 5), 0)
@@ -138,6 +168,31 @@ class OcculusOverloard(threading.Thread):
 		finally:
 			self._CurrentHaarRecsLock.release()
 
+	#Thread that calculates motion Image
+	def _MotionDetectionSubThread(self, passed_img):
+
+		self._motionImageQue = (cv2.cvtColor(passed_img, cv2.COLOR_RGB2GRAY), self._motionImageQue[0], self._motionImageQue[1])
+
+		if not (self._motionImageQue[0] is None or self._motionImageQue[1] is None or self._motionImageQue[2] is None):
+
+			#Record When anaylsis took places
+			_TimeOfFram = datetime.datetime.now()
+
+			#Find a motion picture
+			_motionPic = Occulus_ToolBox.diffImg(self._motionImageQue[0], self._motionImageQue[1], self._motionImageQue[2])
+
+			#grean the mean and standard deviation of the "Motion" pic
+			_mean, _deviation = cv2.meanStdDev(_motionPic)
+			_mean = sum(_mean)
+			_deviation = sum(_deviation)
+
+			#if some were the most current analysisis upload to main
+			if(self._motionOutput is None or _TimeOfFram > self._motionOutput[2]):
+				self._motionOutputLock.acquire()
+				self._motionOutput = (_mean, _deviation, _TimeOfFram)
+				self._motionOutputLock.release()
+
+#If we want to kill the threader
 	def stop(self):
 		self._Run_Flag = False
 

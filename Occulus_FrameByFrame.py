@@ -41,7 +41,6 @@ class OculusMaximus():
 
 		#Sets some initial class Flag Variables & Counters
 		self._haarDetect_Flag = False
-		self._MotionDetect_Flag = False
 		self._haarMulti_Flag = False
 		self._Run_Flag = True
 		self._RecordVideo = False
@@ -88,55 +87,49 @@ class OculusMaximus():
 		#Variable used to store open Output video file reference
 		_videoOut = None
 
+		_cap = True
+
 		while(self._Run_Flag):
 
-			#Capture New Frame and record when you did it
-			_, orig_img = self._MainCaptureIterFace.read()
+			if _cap:
 
-			#Comput Fps
-			_currentCaptureTime = datetime.datetime.now()
-			currentFPS = 1.0/(_currentCaptureTime-self._LastImageCapture).total_seconds()
-			self._LastImageCapture = _currentCaptureTime
+				#Capture New Frame and record when you did it
+				_, orig_img = self._MainCaptureIterFace.read()
 
-			#Flip the image so its mirrored and make a copy to be used later
-			orig_img = cv2.flip(orig_img, 1)
-			output_img = orig_img.copy()
+				#Comput Fps
+				_currentCaptureTime = datetime.datetime.now()
+				currentFPS = 1.0/(_currentCaptureTime-self._LastImageCapture).total_seconds()
+				self._LastImageCapture = _currentCaptureTime
 
-			#I pass original because the overloard makes an internal copy that it passes off to its subthreads
-			self._ThreadOverLoard.addFrame(orig_img)
+				#Flip the image so its mirrored and make a copy to be used later
+				orig_img = cv2.flip(orig_img, 1)
+				output_img = orig_img.copy()
 
-			if self._haarDetect_Flag:
-				#Draw The Box around detected faces
-				self.box(self._ThreadOverLoard.getLatestHaarAnalysis(), output_img)
+				if self._haarDetect_Flag:
+
+					#I pass original because the overloard makes an internal copy that it passes off to its subthreads
+					self._ThreadOverLoard.addFrame4Haar(orig_img)
+					self.box(self._ThreadOverLoard.getLatestHaarAnalysis(), output_img)
+
+				#Display image
+				if self._showOutput:
+
+					_DispText = "FPS: %02d" % (currentFPS)
+
+					if self._haarDetect_Flag:
+						Temp = self._ThreadOverLoard.getInfo()
+						_DispText += " #Threads: %d SleepTime: %.2f" % Temp
+
+					cv2.putText(output_img, _DispText, (5, int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 0))
+
+					cv2.imshow("OutPut "+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)))+" "
+								+ str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))), output_img)
+
+					_cap = False
 
 			#Write Video out to selected file
 			if self._RecordVideo:
 				_videoOut.write(output_img)
-
-			#Display image
-			if self._showOutput:
-
-				_DispText = "FPS: %02d" % (currentFPS)
-
-				if self._haarDetect_Flag or self._MotionDetect_Flag:
-					_Temp = self._ThreadOverLoard.getInfo()
-					_DispText += " #Threads: %d SleepTime: %.2f" % _Temp
-
-					cv2.putText(output_img, _DispText, (5, int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))-10), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 0))
-
-					if self._MotionDetect_Flag:
-						_Temp = self._ThreadOverLoard.getLatestMotionAnalysis()
-
-						if _Temp is None:
-							_DispText = "Initializing..."
-						else:
-							_Temp = (_Temp[0][0], _Temp[1][0])
-							_DispText = " Mean: %.2f Deviation: %.2f" % _Temp
-
-						cv2.putText(output_img, _DispText, (5, 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 0))
-
-				cv2.imshow("OutPut "+str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)))+" "
-							+ str(int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))), output_img)
 
 			#I Never rember what wait key does
 			#But one of the best things is that you can pull keypresses
@@ -163,24 +156,18 @@ class OculusMaximus():
 				#One Last Final Goodbye
 				print "Le fin"
 
+			elif x & 0xFF == ord('j'):
+				_cap = True
+
 			#IF F is pressed do some basic Haar recognition
 			elif x & 0xFF == ord('h'):
 				if self._XML_isValid[0]:
 					self._haarDetect_Flag = not self._haarDetect_Flag
 
-					self._ThreadOverLoard.setFlags(self._haarDetect_Flag, self._MotionDetect_Flag)
 					#value_when_true if condition else value_when_false
 					print "Haar Filter Tracking " + ("on" if self._haarDetect_Flag else "off")
 				else:
 					print "---Nope Sry... Something went wrong with XML Resource---\n", self._XML_isValid
-
-			elif x & 0xFF == ord('m'):
-
-				self._MotionDetect_Flag = not self._MotionDetect_Flag
-
-				self._ThreadOverLoard.setFlags(self._haarDetect_Flag, self._MotionDetect_Flag)
-				#value_when_true if condition else value_when_false
-				print "Haar Motion Tracking " + ("on" if self._MotionDetect_Flag else "off")
 
 			#If N is Pressed... Load in new XML file
 			elif x & 0xFF == ord('n'):
@@ -199,7 +186,7 @@ class OculusMaximus():
 					print "---Something Bad Happend While Loading Haar XML---\n", self._XML_isValid[1]
 
 			#If M is pressed use multi haarfilters in selected dir
-			elif x & 0xFF == ord('d'):
+			elif x & 0xFF == ord('m'):
 				dirname = askdirectory(initialdir=self.Resources_Root_Folder, title='Select A Directory Folder')
 				print "The Directory name: ", dirname
 
