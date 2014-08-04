@@ -1,9 +1,10 @@
-"""
-This Script Manages Thread Overloard class wich controlls all image analyisis threads
+"""_____________________________________________________________________________
+This Script Manages Thread Overloard class wich creates/controlls/kills all image analyisis
+threads
 
 Created By: CitizenX
 Python 2.7
-"""
+_____________________________________________________________________________"""
 
 
 #Importing Necisary moduals
@@ -183,11 +184,12 @@ class OcculusOverloard(threading.Thread):
 
 			#grean the mean and standard deviation of the "Motion" pic
 			_mean, _deviation = cv2.meanStdDev(_motionPic)
-			_mean = sum(_mean)
-			_deviation = sum(_deviation)
+			_mean = sum(_mean)/len(_mean)
+			_deviation = sum(_deviation)/len(_mean)
 
 			#if some were the most current analysisis upload to main
 			if(self._motionOutput is None or _TimeOfFram > self._motionOutput[2]):
+
 				self._motionOutputLock.acquire()
 				self._motionOutput = (_mean, _deviation, _TimeOfFram)
 				self._motionOutputLock.release()
