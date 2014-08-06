@@ -24,7 +24,7 @@ def diffImg(t0, t1, t2):
 
 #CALCULATES_THE_DIFFERNCE_BETWEEN_2_HISTOGRAMS_AND_RETURNS_VALUE(0.0-1.0)________________
 #YEAH... needed a way to compare faces, histograms seamed like the easyiest way
-def CompareHistogram(passedImg1, passedImg2, comparison_Method=cv.CV_COMP_CORREL):
+def Compare_2IMG_by_Histogram(passedImg1, passedImg2, comparison_Method=cv.CV_COMP_CORREL):
 
 	#convert both images to HSV
 	_img1 = cv2.cvtColor(passedImg1, cv.CV_BGR2HSV)
@@ -35,6 +35,8 @@ def CompareHistogram(passedImg1, passedImg2, comparison_Method=cv.CV_COMP_CORREL
 
 	#to be returned later
 	bgrReturnValues = []
+	hist1 = []
+	hist2 = []
 
 	#itterate accros all the color chanels
 	for ch, col in enumerate(_color):
@@ -50,7 +52,39 @@ def CompareHistogram(passedImg1, passedImg2, comparison_Method=cv.CV_COMP_CORREL
 		#compare
 		sc = cv2.compareHist(hist_item1, hist_item2, cv.CV_COMP_CORREL)
 
+		#addValues to return list
+		bgrReturnValues.append(sc)
+		hist1.append(hist_item1)
+		hist2.append(hist_item2)
+
+	return bgrReturnValues, hist1, hist2,
+
+def Compare_Histogram_To_Img(hist1, passedImg2, comparison_Method=cv.CV_COMP_CORREL):
+
+	#convert passed image to HSV
+	_img2 = cv2.cvtColor(passedImg2, cv.CV_BGR2HSV)
+
+	#iteratible chanles
+	_color = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+
+	#to be returned later
+	bgrReturnValues = []
+	hist2 = []
+
+	#itterate accros all the color chanels
+	for ch, col in enumerate(_color):
+
+		#Calculate Histogram
+		hist_item2 = cv2.calcHist([_img2], [ch], None, [256], [0, 255])
+
+		#Do some Normilization(assumes passed histogram is already)
+		cv2.normalize(hist_item2, hist_item2, 0, 255, cv2.NORM_MINMAX)
+
+		#compare
+		sc = cv2.compareHist(hist1[ch], hist_item2, cv.CV_COMP_CORREL)
+
 		#addValue to return list
 		bgrReturnValues.append(sc)
+		hist2.append(hist_item2)
 
-	return bgrReturnValues
+	return bgrReturnValues, hist2

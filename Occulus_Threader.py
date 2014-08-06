@@ -194,7 +194,14 @@ class OcculusOverloard(threading.Thread):
 				self._motionOutput = (_mean, _deviation, _TimeOfFram)
 				self._motionOutputLock.release()
 
-#If we want to kill the threader
+	def _AR_FacialAnalysis(self, VideoLoc, cascade):
+
+		_cap = cv2.VideoCapture(VideoLoc)
+
+		while(_cap.isOpened()):
+			ret, frame = _cap.read()
+
+	#If we want to kill the threader
 	def stop(self):
 		self._Run_Flag = False
 

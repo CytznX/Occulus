@@ -9,7 +9,6 @@ _____________________________________________________________________________"""
 import datetime
 import os
 import cv2
-import cv
 
 #Some Renamed Import
 from Tkinter import Tk
@@ -31,6 +30,17 @@ class OculusMaximus():
 		self.Images_Root_Folder = "img/"
 		self.Resources_Root_Folder = "res/"
 
+		#EasyWay to map keypress functionaliity
+		#Got tired of searching through "if" statments
+		self._keyPressDic = {"quit": 'q',
+													"autoCapture": 'r',
+													"manualCapture": 'c',
+													"haarAnalysis": 'h',
+													"motionAnalysis": 'm',
+													"newHaarFilter": 'n',
+													"newMultiHaar": 'd',
+													"manualSnapshot": ' '}
+
 		#Keeps Track of Current Haar Wavelet
 		self._CurrentHaarXML = self.Resources_Root_Folder+"haarFilter_Face_Basic/"
 
@@ -50,6 +60,7 @@ class OculusMaximus():
 		#autosave class variables
 		self._AutoSave = False
 		self._VideoStartTime = None
+		self._MostRectentVidLoc = None
 		self._LastMotion = None
 		self._runlength = 5
 
@@ -78,7 +89,7 @@ class OculusMaximus():
 		#Create the Video Interfaces
 		self._MainCaptureIterFace = cv2.VideoCapture(interface)
 
-		self._codec = cv.CV_FOURCC('D', 'I', 'V', 'X')
+		self._codec = cv2.cv.CV_FOURCC(*'XVID')
 
 		self._size = (int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)),
 						int(self._MainCaptureIterFace.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)))
@@ -100,9 +111,6 @@ class OculusMaximus():
 		self._MainCaptureIterFace.release()
 		self._Run_Flag = False
 		self._ThreadOverLoard.stop()
-
-		if self._RecordVideo:
-			_videoOut.release()
 
 		#Signals Main Vid Thread is done... and where waiting on subthreads
 		print "Bailing Out...\n"+Reason+"\nCya!!!"
@@ -132,6 +140,10 @@ class OculusMaximus():
 
 			#Bail out i
 			if (_ is False):
+
+				if self._RecordVideo:
+					_videoOut.release()
+
 				self.endRun("something went wrong could not grab frame from capture interface")
 				break
 
@@ -183,7 +195,7 @@ class OculusMaximus():
 				_videoOut.write(output_img)
 
 			#if auto record is active
-			if self._AutoSave and not _Temp2 is None:
+			if (self._AutoSave or not self._VideoStartTime is None) and not _Temp2 is None:
 
 				#if Theres no video recording
 				if self._VideoStartTime is None:
@@ -210,7 +222,8 @@ class OculusMaximus():
 							os.makedirs(_subDir)
 
 						#OPen Video
-						self._Video.open(_subDir+self._LastFrameTime.strftime("(%H:%M:%S)")+'.avi', self._codec, 30, self._size, 1)
+						self._Video.open(_subDir+self._LastFrameTime.strftime("(%H:%M:%S)")+'.avi', self._codec, 20, self._size, 1)
+						self._MostRectentVidLoc = _subDir+self._LastFrameTime.strftime("(%H:%M:%S)")
 
 						#Meh... more debug
 						if self._debug:
@@ -264,15 +277,30 @@ class OculusMaximus():
 			x = cv2.waitKey(1)
 
 			#If you press q baill out
-			if x & 0xFF == ord('q'):
+			if x & 0xFF == ord(self._keyPressDic["quit"]):
+				if self._RecordVideo:
+					_videoOut.release()
+
 				self.endRun()
 
-			elif x & 0xFF == ord('r'):
-				self._AutoSave = not self._AutoSave
-				print "Auto Record " + ("on" if self._AutoSave else "off")
+			elif x & 0xFF == ord(self._keyPressDic["autoCapture"]):
+
+				#If motion detect is on!!!!!!
+				if self._MotionDetect_Flag is True:
+
+					#Turn Auto capture on and off at will
+					self._AutoSave = not self._AutoSave
+					print "Auto Record " + ("on" if self._AutoSave else "off")
+
+				#else make sure motion detect is on before capturing
+				else:
+					if not self._AutoSave:
+						print "WARNING: Turn On motion Capture First"
+					else:
+						self._AutoSave = not self._AutoSave
 
 			#IF h is pressed do some basic Haar recognition
-			elif x & 0xFF == ord('h'):
+			elif x & 0xFF == ord(self._keyPressDic["haarAnalysis"]):
 				if self._XML_isValid[0]:
 					self._haarDetect_Flag = not self._haarDetect_Flag
 
@@ -282,16 +310,19 @@ class OculusMaximus():
 				else:
 					print "---Nope Sry... Something went wrong with XML Resource---\n", self._XML_isValid
 
-			elif x & 0xFF == ord('m'):
+			elif x & 0xFF == ord(self._keyPressDic["motionAnalysis"]):
 
-				self._MotionDetect_Flag = not self._MotionDetect_Flag
+				if self._AutoSave is True and self._MotionDetect_Flag is True:
+						print "WARNING: Turn off Auto Capture first"
+				else:
+					self._MotionDetect_Flag = not self._MotionDetect_Flag
 
-				self._ThreadOverLoard.setFlags(self._haarDetect_Flag, self._MotionDetect_Flag)
-				#value_when_true if condition else value_when_false
-				print "Haar Motion Tracking " + ("on" if self._MotionDetect_Flag else "off")
+					self._ThreadOverLoard.setFlags(self._haarDetect_Flag, self._MotionDetect_Flag)
+					#value_when_true if condition else value_when_false
+					print "Haar Motion Tracking " + ("on" if self._MotionDetect_Flag else "off")
 
 			#If N is Pressed... Load in new XML file
-			elif x & 0xFF == ord('n'):
+			elif x & 0xFF == ord(self._keyPressDic["newHaarFilter"]):
 
 				#Ask for new file
 				_filename = askopenfilename(initialdir=self.Resources_Root_Folder+"haarFilter_Face_Basic/", title='Select Your Haar Filter')
@@ -307,12 +338,13 @@ class OculusMaximus():
 					print "---Something Bad Happend While Loading Haar XML---\n", self._XML_isValid[1]
 
 			#If M is pressed use multi haarfilters in selected dir
-			elif x & 0xFF == ord('d'):
+			elif x & 0xFF == ord(self._keyPressDic["newMultiHaar"]):
 				dirname = askdirectory(initialdir=self.Resources_Root_Folder, title='Select A Directory Folder')
 				print "The Directory name: ", dirname
 
 			#If Enter Is pressed Enter sart video Record
-			elif x & 0xFF == ord('c'):
+			elif x & 0xFF == ord(self._keyPressDic["manualCapture"]):
+
 				if not self._RecordVideo:
 
 					print "Video recordkey pressed"
@@ -339,7 +371,8 @@ class OculusMaximus():
 
 					print "Ended Video record"
 
-			elif x == 32 or x == 1048608:
+			elif x & 0xFF == ord(self._keyPressDic["manualSnapshot"]):
+				#x == 32 or x == 1048608
 				#TSH SPACE: 1048608
 
 				_tmpDir = "manualCapture/"+datetime.datetime.now().strftime("%B_%d_%Y/")
@@ -355,7 +388,7 @@ class OculusMaximus():
 
 			#case you want to know what key you pressed
 			elif x != -1:
-				print "Key Press ==", x
+				print "Key Press == |", x, "| Order: |", chr(x & 0xFF), "|"
 
 
 	#How to make a propertry
